@@ -185,6 +185,11 @@ struct Args {
     intercept_horizon: f32,
     physics_step: f32,
     boot_radius: i32,
+    rescue_space_delay: f64,
+    rescue_space_taps: i32,
+    rescue_space_interval: f64,
+    rescue_space_cooldown: f64,
+    no_rescue_space: bool,
     debug: bool,
     no_startup: bool,
 }
@@ -210,6 +215,11 @@ impl Default for Args {
             intercept_horizon: 2.2,
             physics_step: 0.018,
             boot_radius: 16,
+            rescue_space_delay: 2.0,
+            rescue_space_taps: 2,
+            rescue_space_interval: 0.35,
+            rescue_space_cooldown: 3.0,
+            no_rescue_space: false,
             debug: false,
             no_startup: false,
         }
@@ -334,11 +344,16 @@ fn parse_args() -> Args {
             "--template" => args.template = it.next().unwrap_or(args.template),
             "--debug" => args.debug = true,
             "--no-startup" => args.no_startup = true,
+            "--no-rescue-space" => args.no_rescue_space = true,
+            "--rescue-space-delay" => args.rescue_space_delay = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.rescue_space_delay),
+            "--rescue-space-taps" => args.rescue_space_taps = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.rescue_space_taps),
+            "--rescue-space-interval" => args.rescue_space_interval = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.rescue_space_interval),
+            "--rescue-space-cooldown" => args.rescue_space_cooldown = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.rescue_space_cooldown),
             "--deadzone" => args.deadzone = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.deadzone),
             "--cart-speed" => args.cart_speed = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.cart_speed),
             "--min-boot-speed" => args.min_boot_speed = it.next().and_then(|v| v.parse().ok()).unwrap_or(args.min_boot_speed),
             "--help" | "-h" => {
-                println!("Usage: boot_catcher_rs [--fps N] [--debug] [--log-file PATH] [--no-startup]");
+                println!("Usage: boot_catcher_rs [--fps N] [--debug] [--log-file PATH] [--no-startup] [--no-rescue-space]");
                 std::process::exit(0);
             }
             _ => {}
@@ -903,6 +918,12 @@ fn run_startup() {
     }
 }
 
+fn tap_space() {
+    key_event(VK_SPACE, false);
+    sleep(Duration::from_millis(70));
+    key_event(VK_SPACE, true);
+}
+
 fn open_log(path: &str) -> io::Result<Option<BufWriter<File>>> {
     if path.is_empty() {
         return Ok(None);
@@ -948,6 +969,9 @@ fn main() -> io::Result<()> {
     let mut cart_state: Option<MotionState> = None;
     let mut held = HeldKey::None;
     let mut log = open_log(&args.log_file)?;
+    let mut boot_missing_since: Option<f64> = None;
+    let mut rescue_space_remaining = 0;
+    let mut next_rescue_space_at = f64::INFINITY;
     let frame_delay = Duration::from_secs_f64(1.0 / args.fps.max(1.0));
     let start = Instant::now();
     let mut fps_est = 0.0f64;
@@ -1038,6 +1062,15 @@ fn main() -> io::Result<()> {
             }
         }
 
+        if boot_state.is_some() {
+            boot_missing_since = None;
+            rescue_space_remaining = 0;
+            next_rescue_space_at = f64::INFINITY;
+        } else if boot_missing_since.is_none() {
+            boot_missing_since = Some(now);
+            next_rescue_space_at = now + args.rescue_space_delay.max(0.0);
+        }
+
         let t = Instant::now();
         let target_x = last_found_boot_x;
         let intercept_t = 0.0;
@@ -1059,6 +1092,21 @@ fn main() -> io::Result<()> {
             }
         } else {
             release_keys(&mut held, false);
+            if control_enabled && !args.no_rescue_space && args.rescue_space_taps > 0 && now >= next_rescue_space_at {
+                tap_space();
+                action = 'S';
+                reject_reason = if reject_reason.is_empty() { "rescue_space".to_string() } else { reject_reason };
+                if rescue_space_remaining <= 0 {
+                    rescue_space_remaining = args.rescue_space_taps - 1;
+                } else {
+                    rescue_space_remaining -= 1;
+                }
+                next_rescue_space_at = if rescue_space_remaining > 0 {
+                    now + args.rescue_space_interval.max(0.05)
+                } else {
+                    now + args.rescue_space_cooldown.max(args.rescue_space_interval.max(0.05))
+                };
+            }
         }
         let control_ms = t.elapsed().as_secs_f64() * 1000.0;
 

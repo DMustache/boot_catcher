@@ -22,6 +22,13 @@ Options:
 - `--log-file PATH`
 - `--template PATH`
 - `--no-startup`
+- `--no-rescue-space`
+- `--rescue-space-delay N`
+- `--rescue-space-taps N`
+- `--rescue-space-interval N`
+- `--rescue-space-cooldown N`
+
+If the detector has no boot for `--rescue-space-delay` seconds, the bot releases A/D and taps Space `--rescue-space-taps` times. This helps recover when the minigame waits for the next boot/start input instead of requiring manual Space presses.
 
 ## Startup position helper
 
