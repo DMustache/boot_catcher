@@ -1,7 +1,5 @@
 # Boot Catcher Rust
 
-Minimal Rust port of `boot_catcher_predictive.py`.
-
 ## Build
 
 ```powershell
@@ -24,6 +22,17 @@ Options:
 - `--log-file PATH`
 - `--template PATH`
 - `--no-startup`
+
+## Startup position helper
+
+At the game's startup position picker, select one of the two marked corner zones:
+
+![Startup corner zones](images/corners_of_the_game.png)
+
+- upper-left zone
+- lower-right zone
+
+These zones keep the boot picker away from the central playfield and give the detector a clear screen layout before the run starts. After selecting a position, start the run normally.
 
 The Rust version uses WinAPI directly:
 
